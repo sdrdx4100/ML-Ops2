@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block title %}Inference - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Inference</h1>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Run Prediction</h3>
+        </div>
+        <form method="post" action="{% url 'inference_app:predict' %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="model_version">Model Version</label>
+                <select id="model_version" name="model_version" required onchange="updateFeatures()">
+                    <option value="">Select a model...</option>
+                    {% for model in models %}
+                    <option value="{{ model.version }}" 
+                            data-features="{{ model.metadata.feature_columns|default:''|join:',' }}">
+                        {{ model.model_type }} v{{ model.version }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="input_type">Input Type</label>
+                <select id="input_type" name="input_type" onchange="toggleInputType()">
+                    <option value="single">Single Input</option>
+                    <option value="file">File Upload</option>
+                </select>
+            </div>
+            
+            <div id="single_input_section">
+                <div id="feature_inputs">
+                    <p class="text-muted">Select a model to see input fields</p>
+                </div>
+            </div>
+            
+            <div id="file_input_section" style="display: none;">
+                <div class="form-group">
+                    <label for="input_file">Input File (CSV or Parquet)</label>
+                    <input type="file" id="input_file" name="input_file" accept=".csv,.parquet">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="analyze" value="true">
+                    Include Feature Analysis
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label for="analysis_method">Analysis Method</label>
+                <select id="analysis_method" name="analysis_method">
+                    <option value="shap">SHAP</option>
+                    <option value="lime">LIME</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn">Run Prediction</button>
+        </form>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3>Recent Inferences</h3>
+        </div>
+        {% if logs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Model Version</th>
+                    <th>Timestamp</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.id }}</td>
+                    <td>v{{ log.model_version }}</td>
+                    <td>{{ log.timestamp|date:"Y-m-d H:i" }}</td>
+                    <td>
+                        <a href="{% url 'inference_app:log_detail' log.id %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No inference logs yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function toggleInputType() {
+    const inputType = document.getElementById('input_type').value;
+    document.getElementById('single_input_section').style.display = inputType === 'single' ? 'block' : 'none';
+    document.getElementById('file_input_section').style.display = inputType === 'file' ? 'block' : 'none';
+}
+
+function updateFeatures() {
+    const select = document.getElementById('model_version');
+    const option = select.options[select.selectedIndex];
+    const container = document.getElementById('feature_inputs');
+    
+    container.innerHTML = '';
+    
+    if (option && option.dataset.features) {
+        const features = option.dataset.features.split(',');
+        features.forEach(feature => {
+            if (feature.trim()) {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                div.innerHTML = `
+                    <label for="input_${feature}">${feature}</label>
+                    <input type="text" id="input_${feature}" name="input_${feature}" placeholder="Enter ${feature}">
+                `;
+                container.appendChild(div);
+            }
+        });
+    }
+    
+    if (container.innerHTML === '') {
+        container.innerHTML = '<p class="text-muted">Enter feature values below</p>';
+        // Add a generic input
+        const div = document.createElement('div');
+        div.className = 'form-group';
+        div.innerHTML = `
+            <label for="input_value">Input Value</label>
+            <input type="text" id="input_value" name="input_value" placeholder="Enter value">
+        `;
+        container.appendChild(div);
+    }
+}
+</script>
+{% endblock %}

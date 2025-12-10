@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}Job {{ job.job_id }} - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Training Job: {{ job.job_id }}</h1>
+    <a href="{% url 'training_app:index' %}" class="btn btn-secondary">Back to Training</a>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Job Details</h3>
+        </div>
+        <table>
+            <tr>
+                <th>Status</th>
+                <td>
+                    <span class="badge {% if job.status == 'completed' %}badge-success{% elif job.status == 'failed' %}badge-error{% else %}badge-accent{% endif %}">
+                        {{ job.status }}
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <th>Model Type</th>
+                <td>{{ job.model_type }}</td>
+            </tr>
+            <tr>
+                <th>Training Mode</th>
+                <td>{{ job.get_training_mode_display }}</td>
+            </tr>
+            <tr>
+                <th>Dataset</th>
+                <td>{{ job.dataset_name }}</td>
+            </tr>
+            <tr>
+                <th>Target Column</th>
+                <td>{{ job.target_column }}</td>
+            </tr>
+            <tr>
+                <th>Started At</th>
+                <td>{{ job.started_at }}</td>
+            </tr>
+            <tr>
+                <th>Completed At</th>
+                <td>{{ job.completed_at|default:"-" }}</td>
+            </tr>
+            {% if job.result_version %}
+            <tr>
+                <th>Result Model</th>
+                <td>
+                    <a href="{% url 'model_registry:model_detail' job.result_version %}">v{{ job.result_version }}</a>
+                </td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3>Configuration</h3>
+        </div>
+        
+        <h4 class="mb-1">Hyperparameters</h4>
+        <div class="json-display">
+            {{ job.hyperparameters|default:"{}" }}
+        </div>
+        
+        <h4 class="mt-2 mb-1">Feature Columns</h4>
+        <div class="json-display">
+            {{ job.feature_columns|default:"[]" }}
+        </div>
+        
+        {% if job.error_message %}
+        <h4 class="mt-2 mb-1">Error Message</h4>
+        <div class="message error">
+            {{ job.error_message }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Dataset - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Upload Dataset</h1>
+    <a href="{% url 'datasets:index' %}" class="btn btn-secondary">Back to Datasets</a>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="name">Dataset Name</label>
+            <input type="text" id="name" name="name" required placeholder="e.g., housing_data">
+        </div>
+        
+        <div class="form-group">
+            <label for="file">Data File (CSV or Parquet)</label>
+            <input type="file" id="file" name="file" required accept=".csv,.parquet">
+        </div>
+        
+        <p class="text-muted text-small mb-2">
+            Supported formats: CSV (.csv) and Parquet (.parquet)
+        </p>
+        
+        <button type="submit" class="btn">Upload</button>
+    </form>
+</div>
+{% endblock %}

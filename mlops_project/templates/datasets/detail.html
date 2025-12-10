@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ dataset.name }} - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>{{ dataset.name }}</h1>
+    <div class="flex gap-2">
+        <a href="{% url 'datasets:index' %}" class="btn btn-secondary">Back to Datasets</a>
+        <form method="post" action="{% url 'datasets:delete' dataset.name %}" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this dataset?')">Delete</button>
+        </form>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Dataset Info</h3>
+        </div>
+        <table>
+            <tr>
+                <th>Name</th>
+                <td>{{ dataset.name }}</td>
+            </tr>
+            <tr>
+                <th>File Type</th>
+                <td><span class="badge">{{ dataset.file_type|upper }}</span></td>
+            </tr>
+            <tr>
+                <th>Row Count</th>
+                <td>{{ dataset.row_count }}</td>
+            </tr>
+            <tr>
+                <th>Column Count</th>
+                <td>{{ dataset.column_names|length }}</td>
+            </tr>
+            <tr>
+                <th>Created At</th>
+                <td>{{ dataset.created_at }}</td>
+            </tr>
+            <tr>
+                <th>Updated At</th>
+                <td>{{ dataset.updated_at }}</td>
+            </tr>
+        </table>
+        
+        <h4 class="mt-2 mb-1">Columns</h4>
+        <div class="json-display">
+            {% for col in dataset.column_names %}
+            {{ col }}{% if not forloop.last %}, {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3>Column Statistics</h3>
+        </div>
+        {% if dataset.statistics %}
+        <div style="max-height: 400px; overflow-y: auto;">
+            {% for col, stats in dataset.statistics.items %}
+            <div class="mb-2">
+                <strong>{{ col }}</strong> <span class="text-muted text-small">({{ stats.dtype }})</span>
+                <ul style="list-style: none; padding-left: 1rem; margin-top: 0.25rem;">
+                    <li class="text-small">Null count: {{ stats.null_count }}</li>
+                    <li class="text-small">Unique count: {{ stats.unique_count }}</li>
+                    {% if stats.mean %}
+                    <li class="text-small">Mean: {{ stats.mean|floatformat:2 }}</li>
+                    <li class="text-small">Std: {{ stats.std|floatformat:2 }}</li>
+                    <li class="text-small">Min: {{ stats.min|floatformat:2 }}</li>
+                    <li class="text-small">Max: {{ stats.max|floatformat:2 }}</li>
+                    {% endif %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">No statistics available.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if preview_html %}
+<div class="card mt-3">
+    <div class="card-header">
+        <h3>Data Preview (first 100 rows)</h3>
+    </div>
+    <div style="overflow-x: auto;">
+        {{ preview_html|safe }}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

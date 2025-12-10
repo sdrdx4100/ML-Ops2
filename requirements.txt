@@ -1,0 +1,25 @@
+# Django
+Django>=6.0
+
+# ML Libraries
+scikit-learn>=1.3.0
+torch>=2.0.0
+xgboost>=1.7.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+duckdb>=0.8.0
+pyarrow>=12.0.0
+
+# Visualization
+matplotlib>=3.7.0
+plotly>=5.15.0
+
+# Explainability
+shap>=0.42.0
+lime>=0.2.0
+
+# Testing
+pytest>=7.4.0
+pytest-django>=4.5.0

@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+
+{% block title %}Inference Log - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Inference Log #{{ log.id }}</h1>
+    <a href="{% url 'inference_app:index' %}" class="btn btn-secondary">Back to Inference</a>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Details</h3>
+        </div>
+        <table>
+            <tr>
+                <th>Model Version</th>
+                <td>v{{ log.model_version }}</td>
+            </tr>
+            <tr>
+                <th>Timestamp</th>
+                <td>{{ log.timestamp }}</td>
+            </tr>
+        </table>
+        
+        <h4 class="mt-2 mb-1">Input Data</h4>
+        <div class="json-display">
+            {{ log.input_data }}
+        </div>
+        
+        <h4 class="mt-2 mb-1">Prediction</h4>
+        <div class="json-display">
+            {{ log.prediction }}
+        </div>
+    </div>
+    
+    {% if log.analysis %}
+    <div class="card">
+        <div class="card-header">
+            <h3>Analysis</h3>
+        </div>
+        <div class="json-display">
+            {{ log.analysis }}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
