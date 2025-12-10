@@ -188,3 +188,45 @@ class TestDataLoader:
         
         # Cleanup
         Dataset.objects.filter(name='query_test').delete()
+
+    def test_special_characters_in_name(self, temp_media_dir):
+        """Test datasets with special characters in names (hyphens, numbers at start)."""
+        from django.conf import settings
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        import pandas as pd
+        
+        settings.MEDIA_ROOT = temp_media_dir
+        
+        loader = DataLoader(datasets_dir=os.path.join(temp_media_dir, 'datasets'))
+        
+        # Test names with special characters
+        test_names = [
+            '2024-01-data',      # Starts with number, has hyphen
+            'my-dataset-v2',     # Multiple hyphens
+            '123_numeric_start', # Starts with numbers
+            'data-set-with-many-hyphens',
+        ]
+        
+        for name in test_names:
+            df = pd.DataFrame({
+                'col1': [1, 2, 3],
+                'col2': ['a', 'b', 'c'],
+            })
+            csv_content = df.to_csv(index=False)
+            file = SimpleUploadedFile(f'{name}.csv', csv_content.encode('utf-8'))
+            
+            # Upload should work
+            dataset = loader.upload(file, name)
+            assert dataset.name == name
+            assert dataset.row_count == 3
+            
+            # Load should work
+            loaded_df = loader.load(name)
+            assert len(loaded_df) == 3
+            
+            # Load with specific columns should work
+            loaded_cols = loader.load(name, columns=['col1'])
+            assert list(loaded_cols.columns) == ['col1']
+            
+            # Cleanup
+            loader.delete(name)

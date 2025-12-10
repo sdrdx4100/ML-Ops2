@@ -17,6 +17,44 @@ from shared.utils.exceptions import DataError
 logger = get_logger(__name__)
 
 
+def _sanitize_table_name(name: str) -> str:
+    """
+    Sanitize a name to create a valid SQL table name.
+    
+    Converts to lowercase, replaces spaces and hyphens with underscores,
+    and ensures the name doesn't start with a number.
+    
+    Args:
+        name: Original name
+        
+    Returns:
+        Sanitized table name safe for SQL
+    """
+    safe_name = name.replace(' ', '_').replace('-', '_').lower()
+    # If name starts with a digit, prefix with underscore
+    if safe_name and safe_name[0].isdigit():
+        safe_name = '_' + safe_name
+    return safe_name
+
+
+def _quote_identifier(identifier: str) -> str:
+    """
+    Quote a SQL identifier (table or column name) for DuckDB.
+    
+    Uses double quotes to handle special characters, reserved words,
+    and names starting with numbers.
+    
+    Args:
+        identifier: The identifier to quote
+        
+    Returns:
+        Quoted identifier safe for SQL
+    """
+    # Escape any existing double quotes by doubling them
+    escaped = identifier.replace('"', '""')
+    return f'"{escaped}"'
+
+
 class DataLoader:
     """
     Service for loading and managing datasets.
@@ -90,7 +128,7 @@ class DataLoader:
                 file_type = 'csv'
         
         # Save file
-        safe_name = name.replace(' ', '_').lower()
+        safe_name = _sanitize_table_name(name)
         ext = 'parquet' if file_type == 'parquet' else 'csv'
         filename = f"{safe_name}.{ext}"
         filepath = os.path.join(self.datasets_dir, filename)
@@ -110,10 +148,10 @@ class DataLoader:
         column_names = df.columns.tolist()
         statistics = self._compute_statistics(df)
         
-        # Register in DuckDB
-        table_name = safe_name
-        self.conn.execute(f"DROP TABLE IF EXISTS {table_name}")
-        self.conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM df")
+        # Register in DuckDB with quoted table name
+        quoted_table = _quote_identifier(safe_name)
+        self.conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+        self.conn.execute(f"CREATE TABLE {quoted_table} AS SELECT * FROM df")
         
         # Create or update dataset record
         dataset, created = Dataset.objects.update_or_create(
@@ -153,10 +191,14 @@ class DataLoader:
             raise DataError(f"Dataset '{name}' not found")
         
         # Try DuckDB first
-        safe_name = name.replace(' ', '_').lower()
+        safe_name = _sanitize_table_name(name)
+        quoted_table = _quote_identifier(safe_name)
         try:
-            cols = ', '.join(columns) if columns else '*'
-            query = f"SELECT {cols} FROM {safe_name}"
+            if columns:
+                quoted_cols = ', '.join(_quote_identifier(c) for c in columns)
+            else:
+                quoted_cols = '*'
+            query = f"SELECT {quoted_cols} FROM {quoted_table}"
             if limit:
                 query += f" LIMIT {limit}"
             
@@ -230,9 +272,10 @@ class DataLoader:
             raise DataError(f"Dataset '{name}' not found")
         
         # Drop from DuckDB
-        safe_name = name.replace(' ', '_').lower()
+        safe_name = _sanitize_table_name(name)
+        quoted_table = _quote_identifier(safe_name)
         try:
-            self.conn.execute(f"DROP TABLE IF EXISTS {safe_name}")
+            self.conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
         except Exception:
             pass
         
