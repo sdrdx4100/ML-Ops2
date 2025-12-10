@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Model Registry - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Model Registry</h1>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Registered Models</h3>
+    </div>
+    
+    {% if models %}
+    <table>
+        <thead>
+            <tr>
+                <th>Version</th>
+                <th>Model Type</th>
+                <th>Training Mode</th>
+                <th>Parent</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for model in models %}
+            <tr>
+                <td>
+                    <a href="{% url 'model_registry:model_detail' model.version %}">
+                        v{{ model.version }}
+                    </a>
+                </td>
+                <td>{{ model.model_type }}</td>
+                <td>
+                    <span class="badge {% if model.training_mode == 'new' %}badge-accent{% else %}badge-success{% endif %}">
+                        {{ model.get_training_mode_display }}
+                    </span>
+                </td>
+                <td>
+                    {% if model.parent %}
+                    <a href="{% url 'model_registry:model_detail' model.parent.version %}">
+                        v{{ model.parent.version }}
+                    </a>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>{{ model.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <a href="{% url 'model_registry:model_detail' model.version %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No models registered yet. Train a model to add it to the registry.</p>
+    {% endif %}
+</div>
+{% endblock %}

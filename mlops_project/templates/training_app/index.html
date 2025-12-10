@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+
+{% block title %}Training - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Training</h1>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>New Training Job</h3>
+        </div>
+        <form method="post" action="{% url 'training_app:train' %}">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="training_mode">Training Mode</label>
+                <select id="training_mode" name="training_mode" onchange="toggleFineTune()">
+                    <option value="new">New Training</option>
+                    <option value="fine_tune">Fine-tune Existing Model</option>
+                </select>
+            </div>
+            
+            <div class="form-group" id="base_model_group" style="display: none;">
+                <label for="base_model_version">Base Model Version</label>
+                <select id="base_model_version" name="base_model_version">
+                    <option value="">Select a model...</option>
+                    {% for model in models %}
+                    <option value="{{ model.version }}">{{ model.model_type }} v{{ model.version }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="dataset_name">Dataset</label>
+                <select id="dataset_name" name="dataset_name" required onchange="updateColumns()">
+                    <option value="">Select a dataset...</option>
+                    {% for dataset in datasets %}
+                    <option value="{{ dataset.name }}" data-columns="{{ dataset.column_names|join:',' }}">
+                        {{ dataset.name }} ({{ dataset.row_count }} rows)
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="target_column">Target Column</label>
+                <select id="target_column" name="target_column" required>
+                    <option value="">Select dataset first...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="model_type">Model Type</label>
+                <select id="model_type" name="model_type" required>
+                    {% for value, label in model_types %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="card" style="background-color: var(--bg-dark);">
+                <h4 class="mb-2">Hyperparameters</h4>
+                <div class="grid grid-2">
+                    <div class="form-group">
+                        <label for="hp_n_estimators">N Estimators (Random Forest)</label>
+                        <input type="number" id="hp_n_estimators" name="hp_n_estimators" value="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="hp_max_depth">Max Depth</label>
+                        <input type="number" id="hp_max_depth" name="hp_max_depth" placeholder="None">
+                    </div>
+                    <div class="form-group">
+                        <label for="hp_epochs">Epochs (PyTorch)</label>
+                        <input type="number" id="hp_epochs" name="hp_epochs" value="100">
+                    </div>
+                    <div class="form-group">
+                        <label for="hp_learning_rate">Learning Rate</label>
+                        <input type="text" id="hp_learning_rate" name="hp_learning_rate" value="0.001">
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn">Start Training</button>
+        </form>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3>Recent Jobs</h3>
+        </div>
+        {% if jobs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Job ID</th>
+                    <th>Model Type</th>
+                    <th>Status</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>
+                        <a href="{% url 'training_app:job_detail' job.job_id %}">{{ job.job_id }}</a>
+                    </td>
+                    <td>{{ job.model_type }}</td>
+                    <td>
+                        <span class="badge {% if job.status == 'completed' %}badge-success{% elif job.status == 'failed' %}badge-error{% else %}badge-accent{% endif %}">
+                            {{ job.status }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if job.result_version %}
+                        <a href="{% url 'model_registry:model_detail' job.result_version %}">v{{ job.result_version }}</a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No training jobs yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function toggleFineTune() {
+    const mode = document.getElementById('training_mode').value;
+    const baseModelGroup = document.getElementById('base_model_group');
+    baseModelGroup.style.display = mode === 'fine_tune' ? 'block' : 'none';
+}
+
+function updateColumns() {
+    const select = document.getElementById('dataset_name');
+    const targetSelect = document.getElementById('target_column');
+    const option = select.options[select.selectedIndex];
+    
+    targetSelect.innerHTML = '<option value="">Select column...</option>';
+    
+    if (option && option.dataset.columns) {
+        const columns = option.dataset.columns.split(',');
+        columns.forEach(col => {
+            if (col.trim()) {
+                const opt = document.createElement('option');
+                opt.value = col.trim();
+                opt.textContent = col.trim();
+                targetSelect.appendChild(opt);
+            }
+        });
+    }
+}
+</script>
+{% endblock %}

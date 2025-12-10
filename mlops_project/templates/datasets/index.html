@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Datasets - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Datasets</h1>
+    <a href="{% url 'datasets:upload' %}" class="btn">Upload Dataset</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Registered Datasets</h3>
+    </div>
+    
+    {% if datasets %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Rows</th>
+                <th>Columns</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dataset in datasets %}
+            <tr>
+                <td>
+                    <a href="{% url 'datasets:detail' dataset.name %}">{{ dataset.name }}</a>
+                </td>
+                <td>
+                    <span class="badge">{{ dataset.file_type|upper }}</span>
+                </td>
+                <td>{{ dataset.row_count|default:0 }}</td>
+                <td>{{ dataset.column_names|length }}</td>
+                <td>{{ dataset.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <a href="{% url 'datasets:detail' dataset.name %}" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.85rem;">View</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted">No datasets uploaded yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

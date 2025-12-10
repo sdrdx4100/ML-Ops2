@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}ML-Ops Mini Platform - Home{% endblock %}
+
+{% block content %}
+<div class="text-center mb-3">
+    <h1>ML-Ops Mini Platform</h1>
+    <p>A unified machine learning platform for training, inference, and model management</p>
+</div>
+
+<div class="grid grid-4 mt-3">
+    <div class="card stat-card">
+        <a href="{% url 'training_app:index' %}" style="text-decoration: none; color: inherit;">
+            <div class="stat-value">🎯</div>
+            <div class="stat-label">Training</div>
+            <p class="text-small mt-2">Train new models or fine-tune existing ones</p>
+        </a>
+    </div>
+    
+    <div class="card stat-card">
+        <a href="{% url 'inference_app:index' %}" style="text-decoration: none; color: inherit;">
+            <div class="stat-value">🔮</div>
+            <div class="stat-label">Inference</div>
+            <p class="text-small mt-2">Run predictions with trained models</p>
+        </a>
+    </div>
+    
+    <div class="card stat-card">
+        <a href="{% url 'model_registry:index' %}" style="text-decoration: none; color: inherit;">
+            <div class="stat-value">📦</div>
+            <div class="stat-label">Model Registry</div>
+            <p class="text-small mt-2">Manage trained models and versions</p>
+        </a>
+    </div>
+    
+    <div class="card stat-card">
+        <a href="{% url 'datasets:index' %}" style="text-decoration: none; color: inherit;">
+            <div class="stat-value">📊</div>
+            <div class="stat-label">Datasets</div>
+            <p class="text-small mt-2">Upload and manage training data</p>
+        </a>
+    </div>
+</div>
+
+<div class="grid grid-2 mt-3">
+    <div class="card">
+        <div class="card-header">
+            <h3>Features</h3>
+        </div>
+        <ul style="list-style: none;">
+            <li class="mb-1">✓ New training and fine-tuning</li>
+            <li class="mb-1">✓ Multiple ML frameworks (scikit-learn, PyTorch, XGBoost)</li>
+            <li class="mb-1">✓ Automatic model versioning</li>
+            <li class="mb-1">✓ Model lineage tracking</li>
+            <li class="mb-1">✓ SHAP/LIME feature analysis</li>
+            <li class="mb-1">✓ DuckDB + Parquet support</li>
+            <li class="mb-1">✓ REST API ready</li>
+        </ul>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3>Getting Started</h3>
+        </div>
+        <ol style="padding-left: 1.5rem;">
+            <li class="mb-1">Upload a dataset in the Datasets section</li>
+            <li class="mb-1">Configure and start a training job</li>
+            <li class="mb-1">View trained models in the Registry</li>
+            <li class="mb-1">Run inference with your trained models</li>
+        </ol>
+    </div>
+</div>
+{% endblock %}

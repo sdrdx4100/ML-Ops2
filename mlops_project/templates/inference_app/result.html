@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Prediction Result - ML-Ops{% endblock %}
+
+{% block content %}
+<div class="flex flex-between flex-center mb-3">
+    <h1>Prediction Result</h1>
+    <a href="{% url 'inference_app:index' %}" class="btn btn-secondary">Back to Inference</a>
+</div>
+
+<div class="grid grid-2">
+    <div class="card">
+        <div class="card-header">
+            <h3>Predictions</h3>
+        </div>
+        <p><strong>Model Version:</strong> v{{ result.version }}</p>
+        
+        <h4 class="mt-2 mb-1">Results</h4>
+        <div class="json-display">
+            {% for prediction in result.predictions %}
+            <div class="mb-1">{{ forloop.counter }}. {{ prediction }}</div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    {% if result.analysis %}
+    <div class="card">
+        <div class="card-header">
+            <h3>Feature Analysis ({{ result.analysis.method|upper }})</h3>
+        </div>
+        
+        {% if result.analysis.feature_importance %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>Importance</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for feature, importance in result.analysis.feature_importance.items %}
+                <tr>
+                    <td>{{ feature }}</td>
+                    <td>{{ importance|floatformat:4 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% elif result.analysis.error %}
+        <div class="message error">
+            {{ result.analysis.error }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
