@@ -7,7 +7,7 @@ class TrainingJob(models.Model):
     
     Attributes:
         job_id: Unique job identifier
-        dataset_name: Name of the dataset used
+        dataset_names: JSON list of dataset names used (supports multiple datasets)
         model_type: Type of model being trained
         training_mode: 'new' or 'fine_tune'
         hyperparameters: JSON hyperparameters
@@ -31,7 +31,7 @@ class TrainingJob(models.Model):
     ]
     
     job_id = models.CharField(max_length=100, unique=True)
-    dataset_name = models.CharField(max_length=200)
+    dataset_names = models.JSONField(default=list)  # Changed to support multiple datasets
     model_type = models.CharField(max_length=100)
     training_mode = models.CharField(
         max_length=20,
@@ -58,4 +58,12 @@ class TrainingJob(models.Model):
         verbose_name_plural = 'Training Jobs'
     
     def __str__(self):
-        return f"Job {self.job_id}: {self.model_type} ({self.status})"
+        dataset_count = len(self.dataset_names) if self.dataset_names else 0
+        return f"Job {self.job_id}: {self.model_type} ({dataset_count} datasets, {self.status})"
+    
+    @property
+    def dataset_names_display(self) -> str:
+        """Display dataset names as a comma-separated string."""
+        if not self.dataset_names:
+            return ""
+        return ", ".join(self.dataset_names)

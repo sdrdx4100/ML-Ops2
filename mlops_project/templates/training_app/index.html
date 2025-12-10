@@ -33,22 +33,35 @@
                 </select>
             </div>
             
+            <div class="form-group" id="allow_duplicates_group" style="display: none;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="allow_duplicates" name="allow_duplicates">
+                    Allow duplicate datasets (may cause overfitting)
+                </label>
+            </div>
+            
             <div class="form-group">
-                <label for="dataset_name">Dataset</label>
-                <select id="dataset_name" name="dataset_name" required onchange="updateColumns()">
-                    <option value="">Select a dataset...</option>
+                <label>Datasets (select one or more)</label>
+                <div class="dataset-checkboxes" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); padding: 10px; border-radius: 4px;">
                     {% for dataset in datasets %}
-                    <option value="{{ dataset.name }}" data-columns="{{ dataset.column_names|join:',' }}">
-                        {{ dataset.name }} ({{ dataset.row_count }} rows)
-                    </option>
+                    <label class="checkbox-label" style="display: block; margin-bottom: 8px;">
+                        <input type="checkbox" name="dataset_names" value="{{ dataset.name }}" 
+                               data-columns="{{ dataset.column_names|join:',' }}"
+                               data-rows="{{ dataset.row_count }}"
+                               onchange="updateSelectedDatasets()">
+                        {{ dataset.name }} <span class="text-muted">({{ dataset.row_count }} rows)</span>
+                    </label>
+                    {% empty %}
+                    <p class="text-muted">No datasets available. Upload a dataset first.</p>
                     {% endfor %}
-                </select>
+                </div>
+                <small class="text-muted" id="selected_count">0 datasets selected (0 total rows)</small>
             </div>
             
             <div class="form-group">
                 <label for="target_column">Target Column</label>
                 <select id="target_column" name="target_column" required>
-                    <option value="">Select dataset first...</option>
+                    <option value="">Select dataset(s) first...</option>
                 </select>
             </div>
             
@@ -134,27 +147,54 @@
 function toggleFineTune() {
     const mode = document.getElementById('training_mode').value;
     const baseModelGroup = document.getElementById('base_model_group');
+    const allowDuplicatesGroup = document.getElementById('allow_duplicates_group');
     baseModelGroup.style.display = mode === 'fine_tune' ? 'block' : 'none';
+    allowDuplicatesGroup.style.display = mode === 'fine_tune' ? 'block' : 'none';
 }
 
-function updateColumns() {
-    const select = document.getElementById('dataset_name');
+function updateSelectedDatasets() {
+    const checkboxes = document.querySelectorAll('input[name="dataset_names"]:checked');
     const targetSelect = document.getElementById('target_column');
-    const option = select.options[select.selectedIndex];
+    const selectedCount = document.getElementById('selected_count');
     
+    // Calculate total rows
+    let totalRows = 0;
+    let commonColumns = null;
+    
+    checkboxes.forEach(cb => {
+        totalRows += parseInt(cb.dataset.rows) || 0;
+        
+        const columns = cb.dataset.columns ? cb.dataset.columns.split(',').map(c => c.trim()).filter(c => c) : [];
+        
+        if (commonColumns === null) {
+            commonColumns = new Set(columns);
+        } else {
+            // Intersection
+            commonColumns = new Set([...commonColumns].filter(c => columns.includes(c)));
+        }
+    });
+    
+    // Update count display
+    selectedCount.textContent = `${checkboxes.length} dataset(s) selected (${totalRows.toLocaleString()} total rows)`;
+    
+    // Update target column dropdown with common columns
     targetSelect.innerHTML = '<option value="">Select column...</option>';
     
-    if (option && option.dataset.columns) {
-        const columns = option.dataset.columns.split(',');
-        columns.forEach(col => {
-            if (col.trim()) {
-                const opt = document.createElement('option');
-                opt.value = col.trim();
-                opt.textContent = col.trim();
-                targetSelect.appendChild(opt);
-            }
+    if (commonColumns && commonColumns.size > 0) {
+        [...commonColumns].sort().forEach(col => {
+            const opt = document.createElement('option');
+            opt.value = col;
+            opt.textContent = col;
+            targetSelect.appendChild(opt);
         });
+    } else if (checkboxes.length > 0) {
+        targetSelect.innerHTML = '<option value="">No common columns found</option>';
     }
 }
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateSelectedDatasets();
+});
 </script>
 {% endblock %}

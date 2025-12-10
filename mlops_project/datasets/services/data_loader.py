@@ -2,10 +2,11 @@
 Data loader service for managing datasets.
 """
 import os
+import hashlib
 import duckdb
 import pandas as pd
 import numpy as np
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
 
@@ -241,3 +242,91 @@ class DataLoader:
         
         dataset.delete()
         logger.info(f"Deleted dataset '{name}'")
+
+    def compute_dataset_hash(self, name: str) -> str:
+        """
+        Compute a SHA256 hash of the dataset content.
+        
+        Args:
+            name: Dataset name
+            
+        Returns:
+            SHA256 hash string of the dataset content
+        """
+        df = self.load(name)
+        # Create a hash from the data content
+        content = pd.util.hash_pandas_object(df).values.tobytes()
+        return hashlib.sha256(content).hexdigest()
+    
+    def load_multiple(
+        self,
+        names: List[str],
+        columns: Optional[List[str]] = None
+    ) -> Tuple[pd.DataFrame, Dict[str, str]]:
+        """
+        Load and concatenate multiple datasets.
+        
+        Args:
+            names: List of dataset names to load
+            columns: Optional list of columns to load (must exist in all datasets)
+            
+        Returns:
+            Tuple of (concatenated DataFrame, dict of dataset_name -> hash)
+        """
+        if not names:
+            raise DataError("No dataset names provided")
+        
+        dataframes = []
+        dataset_hashes = {}
+        
+        for name in names:
+            try:
+                df = self.load(name, columns=columns)
+                dataframes.append(df)
+                dataset_hashes[name] = self.compute_dataset_hash(name)
+                logger.info(f"Loaded dataset '{name}' with {len(df)} rows")
+            except Exception as e:
+                raise DataError(f"Failed to load dataset '{name}': {str(e)}")
+        
+        # Verify all DataFrames have compatible columns
+        if columns is None:
+            # Use intersection of all columns
+            common_columns = set(dataframes[0].columns)
+            for df in dataframes[1:]:
+                common_columns &= set(df.columns)
+            
+            if not common_columns:
+                raise DataError("No common columns found across all datasets")
+            
+            common_columns = list(common_columns)
+            dataframes = [df[common_columns] for df in dataframes]
+        
+        combined_df = pd.concat(dataframes, ignore_index=True)
+        logger.info(f"Combined {len(names)} datasets into {len(combined_df)} total rows")
+        
+        return combined_df, dataset_hashes
+    
+    def get_dataset_info(self, name: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a dataset.
+        
+        Args:
+            name: Dataset name
+            
+        Returns:
+            Dictionary with dataset info including hash
+        """
+        try:
+            dataset = Dataset.objects.get(name=name)
+        except Dataset.DoesNotExist:
+            raise DataError(f"Dataset '{name}' not found")
+        
+        return {
+            'name': dataset.name,
+            'file_type': dataset.file_type,
+            'row_count': dataset.row_count,
+            'column_names': dataset.column_names,
+            'statistics': dataset.statistics,
+            'hash': self.compute_dataset_hash(name),
+            'created_at': dataset.created_at,
+        }

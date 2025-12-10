@@ -2,6 +2,84 @@ from django.db import models
 import json
 
 
+class TrainingDataHistory(models.Model):
+    """
+    Model to track which datasets have been used to train each model version.
+    This prevents overfitting by detecting duplicate data usage.
+    
+    Attributes:
+        model_version: Reference to the model artifact
+        dataset_name: Name of the dataset used
+        dataset_hash: SHA256 hash of the dataset content for duplicate detection
+        row_count: Number of rows used from this dataset
+        trained_at: Timestamp when this dataset was used for training
+    """
+    
+    model_version = models.ForeignKey(
+        'ModelArtifact',
+        on_delete=models.CASCADE,
+        related_name='training_history'
+    )
+    dataset_name = models.CharField(max_length=200)
+    dataset_hash = models.CharField(max_length=64)
+    row_count = models.IntegerField(default=0)
+    trained_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-trained_at']
+        verbose_name = 'Training Data History'
+        verbose_name_plural = 'Training Data Histories'
+        # Prevent exact same dataset being used twice for the same model lineage
+        indexes = [
+            models.Index(fields=['model_version', 'dataset_hash']),
+        ]
+    
+    def __str__(self):
+        return f"{self.model_version.version} <- {self.dataset_name}"
+    
+    @classmethod
+    def get_used_dataset_hashes(cls, model_version: 'ModelArtifact') -> set:
+        """
+        Get all dataset hashes used in the training lineage of a model.
+        
+        Args:
+            model_version: The model artifact to check lineage for
+            
+        Returns:
+            Set of dataset hashes used in this model's lineage
+        """
+        used_hashes = set()
+        
+        # Get lineage (current model and all ancestors)
+        lineage = model_version.get_lineage()
+        
+        for model in lineage:
+            history = cls.objects.filter(model_version=model)
+            for entry in history:
+                used_hashes.add(entry.dataset_hash)
+        
+        return used_hashes
+    
+    @classmethod
+    def check_duplicate_datasets(
+        cls, 
+        model_version: 'ModelArtifact', 
+        dataset_hashes: list
+    ) -> list:
+        """
+        Check if any of the given dataset hashes have already been used.
+        
+        Args:
+            model_version: The base model to check against
+            dataset_hashes: List of dataset hashes to check
+            
+        Returns:
+            List of duplicate dataset hashes
+        """
+        used_hashes = cls.get_used_dataset_hashes(model_version)
+        return [h for h in dataset_hashes if h in used_hashes]
+
+
 class ModelArtifact(models.Model):
     """
     Model representing a trained ML model artifact.

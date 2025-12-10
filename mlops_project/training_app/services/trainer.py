@@ -5,7 +5,7 @@ import uuid
 import numpy as np
 import pandas as pd
 from django.utils import timezone
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 from sklearn.linear_model import LinearRegression, SGDRegressor
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader as TorchDataLoader, TensorDataset
 
 from training_app.models import TrainingJob
 from model_registry.services import ModelRegistry
+from model_registry.models import TrainingDataHistory, ModelArtifact
 from datasets.services import DataLoader
 from shared.utils import get_logger, Timer
 from shared.utils.exceptions import TrainingError
@@ -56,11 +57,17 @@ class TorchMLP(nn.Module):
         return self.network(x)
 
 
+class DuplicateDatasetWarning(Exception):
+    """Warning raised when duplicate datasets are detected in training lineage."""
+    pass
+
+
 class Trainer:
     """
     Service for training ML models.
     
-    Supports scikit-learn and PyTorch models.
+    Supports scikit-learn and PyTorch models with multiple dataset training
+    and duplicate detection to prevent overfitting.
     """
     
     SUPPORTED_MODELS = [
@@ -75,6 +82,78 @@ class Trainer:
         self.data_loader = DataLoader()
         self.registry = ModelRegistry()
     
+    def _check_duplicate_datasets(
+        self,
+        base_model_version: Optional[str],
+        dataset_hashes: Dict[str, str],
+        allow_duplicates: bool = False
+    ) -> List[str]:
+        """
+        Check if any datasets have already been used in the model's training lineage.
+        
+        Args:
+            base_model_version: Version of the base model (for fine-tuning)
+            dataset_hashes: Dict of dataset_name -> hash
+            allow_duplicates: If True, return duplicates but don't raise error
+            
+        Returns:
+            List of duplicate dataset names
+            
+        Raises:
+            DuplicateDatasetWarning: If duplicates found and allow_duplicates is False
+        """
+        if not base_model_version:
+            return []
+        
+        try:
+            base_model = ModelArtifact.objects.get(version=base_model_version)
+        except ModelArtifact.DoesNotExist:
+            return []
+        
+        # Get hashes used in the lineage
+        duplicate_hashes = TrainingDataHistory.check_duplicate_datasets(
+            base_model, 
+            list(dataset_hashes.values())
+        )
+        
+        # Find dataset names that are duplicates
+        duplicate_names = [
+            name for name, hash_val in dataset_hashes.items() 
+            if hash_val in duplicate_hashes
+        ]
+        
+        if duplicate_names and not allow_duplicates:
+            raise DuplicateDatasetWarning(
+                f"The following datasets have already been used to train this model's lineage: "
+                f"{', '.join(duplicate_names)}. This may cause overfitting. "
+                f"Set allow_duplicates=True to proceed anyway."
+            )
+        
+        return duplicate_names
+    
+    def _record_training_history(
+        self,
+        model_artifact: 'ModelArtifact',
+        dataset_hashes: Dict[str, str],
+        dataset_row_counts: Dict[str, int]
+    ) -> None:
+        """
+        Record which datasets were used to train this model.
+        
+        Args:
+            model_artifact: The trained model artifact
+            dataset_hashes: Dict of dataset_name -> hash
+            dataset_row_counts: Dict of dataset_name -> row count
+        """
+        for name, hash_val in dataset_hashes.items():
+            TrainingDataHistory.objects.create(
+                model_version=model_artifact,
+                dataset_name=name,
+                dataset_hash=hash_val,
+                row_count=dataset_row_counts.get(name, 0)
+            )
+            logger.info(f"Recorded training history: {model_artifact.version} <- {name}")
+
     def _create_sklearn_model(
         self,
         model_type: str,
@@ -260,9 +339,12 @@ class Trainer:
         """
         Train a model based on configuration.
         
+        Supports training with multiple datasets that are automatically concatenated.
+        Includes duplicate detection to prevent overfitting.
+        
         Args:
             config: Training configuration dict containing:
-                - dataset_name: Name of the dataset
+                - dataset_names: List of dataset names (or dataset_name for single)
                 - model_type: Type of model to train
                 - training_mode: 'new' or 'fine_tune'
                 - feature_columns: List of feature column names
@@ -270,15 +352,26 @@ class Trainer:
                 - hyperparameters: Model hyperparameters
                 - preprocess_config: Preprocessing configuration
                 - base_model_version: (for fine_tune) Version of base model
+                - allow_duplicates: (optional) Allow duplicate datasets in lineage
         
         Returns:
             Tuple of (model_version, metrics)
         """
+        # Normalize dataset names to a list
+        dataset_names = config.get('dataset_names', [])
+        if not dataset_names:
+            # Backward compatibility: support single dataset_name
+            single_name = config.get('dataset_name')
+            if single_name:
+                dataset_names = [single_name]
+            else:
+                raise TrainingError("No datasets specified for training")
+        
         # Create job record
         job_id = str(uuid.uuid4())[:8]
         job = TrainingJob.objects.create(
             job_id=job_id,
-            dataset_name=config['dataset_name'],
+            dataset_names=dataset_names,
             model_type=config['model_type'],
             training_mode=config.get('training_mode', 'new'),
             hyperparameters=config.get('hyperparameters', {}),
@@ -289,8 +382,37 @@ class Trainer:
         )
         
         try:
-            # Load data
-            df = self.data_loader.load(config['dataset_name'])
+            # Load data from multiple datasets
+            if len(dataset_names) == 1:
+                df = self.data_loader.load(dataset_names[0])
+                dataset_hashes = {dataset_names[0]: self.data_loader.compute_dataset_hash(dataset_names[0])}
+            else:
+                df, dataset_hashes = self.data_loader.load_multiple(dataset_names)
+            
+            # Get row counts for each dataset
+            dataset_row_counts = {}
+            for name in dataset_names:
+                try:
+                    from datasets.models import Dataset
+                    ds = Dataset.objects.get(name=name)
+                    dataset_row_counts[name] = ds.row_count
+                except:
+                    dataset_row_counts[name] = 0
+            
+            # Check for duplicate datasets (for fine-tuning)
+            training_mode = config.get('training_mode', 'new')
+            allow_duplicates = config.get('allow_duplicates', False)
+            
+            if training_mode == 'fine_tune' and config.get('base_model_version'):
+                duplicate_names = self._check_duplicate_datasets(
+                    config.get('base_model_version'),
+                    dataset_hashes,
+                    allow_duplicates=allow_duplicates
+                )
+                if duplicate_names:
+                    logger.warning(
+                        f"Duplicate datasets detected in training lineage: {duplicate_names}"
+                    )
             
             # Extract features and target
             feature_cols = config.get('feature_columns', [])
@@ -313,7 +435,6 @@ class Trainer:
             )
             
             model_type = config['model_type']
-            training_mode = config.get('training_mode', 'new')
             hyperparameters = config.get('hyperparameters', {})
             
             is_classifier = 'classifier' in model_type.lower()
@@ -345,7 +466,9 @@ class Trainer:
             
             # Save to registry
             metadata = {
-                'dataset_name': config['dataset_name'],
+                'dataset_names': dataset_names,
+                'dataset_hashes': dataset_hashes,
+                'total_rows': len(df),
                 'feature_columns': feature_cols,
                 'target_column': config['target_column'],
                 'preprocess_config': preprocess_config,
@@ -362,14 +485,29 @@ class Trainer:
                 parent_version=config.get('base_model_version'),
             )
             
+            # Record training history for duplicate detection
+            self._record_training_history(artifact, dataset_hashes, dataset_row_counts)
+            
             # Update job
             job.status = 'completed'
             job.result_version = artifact.version
             job.completed_at = timezone.now()
             job.save()
             
-            logger.info(f"Training completed. Model version: {artifact.version}")
+            logger.info(
+                f"Training completed. Model version: {artifact.version}, "
+                f"trained on {len(dataset_names)} dataset(s) with {len(df)} total rows"
+            )
             return artifact.version, metrics
+            
+        except DuplicateDatasetWarning as e:
+            job.status = 'failed'
+            job.error_message = str(e)
+            job.completed_at = timezone.now()
+            job.save()
+            
+            logger.warning(f"Training blocked due to duplicate datasets: {str(e)}")
+            raise
             
         except Exception as e:
             job.status = 'failed'

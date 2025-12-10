@@ -32,7 +32,7 @@
             </tr>
             <tr>
                 <th>Dataset</th>
-                <td>{{ job.dataset_name }}</td>
+                <td>{{ job.dataset_names_display|default:"-" }}</td>
             </tr>
             <tr>
                 <th>Target Column</th>
@@ -80,4 +80,34 @@
         {% endif %}
     </div>
 </div>
+
+{% if training_history %}
+<div class="card mt-3">
+    <div class="card-header">
+        <h3>Training Data History</h3>
+    </div>
+    <p class="text-muted mb-2">Datasets used to train this model version:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Dataset Name</th>
+                <th>Rows Used</th>
+                <th>Dataset Hash</th>
+                <th>Trained At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for history in training_history %}
+            <tr>
+                <td>{{ history.dataset_name }}</td>
+                <td>{{ history.row_count|default:"-" }}</td>
+                <td><code>{{ history.dataset_hash|truncatechars:16 }}</code></td>
+                <td>{{ history.trained_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 {% endblock %}

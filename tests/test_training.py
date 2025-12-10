@@ -151,7 +151,7 @@ class TestLineage:
         trainer = Trainer()
         base_version, _ = trainer.train(base_config)
         
-        # Now fine-tune
+        # Now fine-tune (with allow_duplicates=True since we're using the same dataset)
         fine_tune_config = {
             'dataset_name': 'test_dataset',
             'model_type': 'sgd_regressor',
@@ -159,6 +159,7 @@ class TestLineage:
             'target_column': 'target',
             'base_model_version': base_version,
             'hyperparameters': {'max_iter': 50},
+            'allow_duplicates': True,  # Allow same dataset for testing lineage
         }
         
         fine_tuned_version, _ = trainer.train(fine_tune_config)
@@ -178,6 +179,45 @@ class TestLineage:
         # Cleanup
         ModelArtifact.objects.filter(version__in=[base_version, fine_tuned_version]).delete()
     
+    def test_duplicate_dataset_detection(self, sample_dataset, temp_media_dir):
+        """Test that duplicate datasets are detected and blocked."""
+        from django.conf import settings
+        from training_app.services.trainer import DuplicateDatasetWarning
+        settings.MEDIA_ROOT = temp_media_dir
+        
+        # First, train a base model
+        base_config = {
+            'dataset_name': 'test_dataset',
+            'model_type': 'sgd_regressor',
+            'training_mode': 'new',
+            'target_column': 'target',
+            'hyperparameters': {'max_iter': 100},
+        }
+        
+        trainer = Trainer()
+        base_version, _ = trainer.train(base_config)
+        
+        # Try to fine-tune with the same dataset (should be blocked)
+        fine_tune_config = {
+            'dataset_name': 'test_dataset',
+            'model_type': 'sgd_regressor',
+            'training_mode': 'fine_tune',
+            'target_column': 'target',
+            'base_model_version': base_version,
+            'hyperparameters': {'max_iter': 50},
+            'allow_duplicates': False,  # Default - should raise error
+        }
+        
+        import pytest
+        with pytest.raises(DuplicateDatasetWarning) as excinfo:
+            trainer.train(fine_tune_config)
+        
+        assert 'test_dataset' in str(excinfo.value)
+        assert 'overfitting' in str(excinfo.value).lower()
+        
+        # Cleanup
+        ModelArtifact.objects.filter(version=base_version).delete()
+
     def test_version_increment(self, sample_dataset, temp_media_dir):
         """Test that versions are incremented correctly."""
         from django.conf import settings
@@ -205,3 +245,73 @@ class TestLineage:
         
         # Cleanup
         ModelArtifact.objects.all().delete()
+
+
+@pytest.mark.django_db
+class TestMultipleDatasets:
+    """Tests for multiple dataset training functionality."""
+    
+    def test_multiple_datasets_training(self, temp_media_dir):
+        """Test training with multiple datasets."""
+        from django.conf import settings
+        from datasets.services import DataLoader
+        import pandas as pd
+        import numpy as np
+        
+        settings.MEDIA_ROOT = temp_media_dir
+        
+        # Create two datasets
+        loader = DataLoader(datasets_dir=temp_media_dir)
+        
+        df1 = pd.DataFrame({
+            'feature1': np.random.randn(50),
+            'feature2': np.random.randn(50),
+            'target': np.random.randn(50),
+        })
+        
+        df2 = pd.DataFrame({
+            'feature1': np.random.randn(50),
+            'feature2': np.random.randn(50),
+            'target': np.random.randn(50),
+        })
+        
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        import io
+        
+        csv1 = df1.to_csv(index=False)
+        file1 = SimpleUploadedFile('dataset1.csv', csv1.encode('utf-8'))
+        loader.upload(file1, 'dataset1')
+        
+        csv2 = df2.to_csv(index=False)
+        file2 = SimpleUploadedFile('dataset2.csv', csv2.encode('utf-8'))
+        loader.upload(file2, 'dataset2')
+        
+        # Train with multiple datasets
+        config = {
+            'dataset_names': ['dataset1', 'dataset2'],
+            'model_type': 'linear_regression',
+            'training_mode': 'new',
+            'target_column': 'target',
+        }
+        
+        trainer = Trainer()
+        version, metrics = trainer.train(config)
+        
+        # Verify model was created
+        artifact = ModelArtifact.objects.get(version=version)
+        assert artifact is not None
+        
+        # Verify metadata contains both datasets
+        assert 'dataset_names' in artifact.metadata
+        assert len(artifact.metadata['dataset_names']) == 2
+        assert artifact.metadata['total_rows'] == 100  # 50 + 50
+        
+        # Verify training history was recorded for both datasets
+        from model_registry.models import TrainingDataHistory
+        history = TrainingDataHistory.objects.filter(model_version=artifact)
+        assert history.count() == 2
+        
+        # Cleanup
+        from datasets.models import Dataset
+        Dataset.objects.filter(name__in=['dataset1', 'dataset2']).delete()
+        ModelArtifact.objects.filter(version=version).delete()
